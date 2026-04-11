@@ -1,5 +1,10 @@
 # plist - A pure Go property list transcoder
 
+[![Tests](https://github.com/moonD4rk/plist/actions/workflows/test.yml/badge.svg)](https://github.com/moonD4rk/plist/actions/workflows/test.yml)
+[![Lint](https://github.com/moonD4rk/plist/actions/workflows/lint.yml/badge.svg)](https://github.com/moonD4rk/plist/actions/workflows/lint.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/moond4rk/plist.svg)](https://pkg.go.dev/github.com/moond4rk/plist)
+[![Go Report Card](https://goreportcard.com/badge/github.com/moond4rk/plist)](https://goreportcard.com/report/github.com/moond4rk/plist)
+
 A modern Go library for encoding and decoding Apple property list files.
 
 This is a modernized fork of [howett.net/plist](https://pkg.go.dev/howett.net/plist), updated for idiomatic Go 1.20+ development. See [Changes from upstream](#changes-from-upstream) for details.

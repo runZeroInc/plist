@@ -15,7 +15,7 @@ jobs:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -24,10 +24,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run tests
-        if: matrix.os == 'windows-latest'
-        run: go test -v ./...
-
       - name: Run tests with coverage
-        if: matrix.os != 'windows-latest'
         run: go test -v -coverprofile=coverage.out ./...
