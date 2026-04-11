@@ -6,34 +6,15 @@ import (
 	"testing"
 )
 
-func BenchmarkXMLEncode(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewEncoder(&bytes.Buffer{}).Encode(plistValueTreeRawData)
-	}
-}
-
-func BenchmarkBplistEncode(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewBinaryEncoder(&bytes.Buffer{}).Encode(plistValueTreeRawData)
-	}
-}
-
-func BenchmarkOpenStepEncode(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewEncoderForFormat(&bytes.Buffer{}, OpenStepFormat).Encode(plistValueTreeRawData)
-	}
-}
-
 func TestEncode(t *testing.T) {
 	for _, test := range tests {
-		subtest(t, test.Name, func(t *testing.T) {
+		t.Run(test.Name, func(t *testing.T) {
 			for fmt, doc := range test.Documents {
 				if test.SkipEncode[fmt] {
 					continue
 				}
-				subtest(t, FormatNames[fmt], func(t *testing.T) {
+				t.Run(FormatNames[fmt], func(t *testing.T) {
 					encoded, err := Marshal(test.Value, fmt)
-
 					if err != nil {
 						t.Error(err)
 					}

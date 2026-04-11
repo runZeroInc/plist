@@ -2,62 +2,48 @@ package plist
 
 import (
 	"bytes"
-	"io/ioutil"
+	"fmt"
 	"testing"
 )
 
-func BenchmarkXMLGenerate(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		d := newXMLPlistGenerator(ioutil.Discard)
-		d.generateDocument(plistValueTree)
-	}
-}
-
-func BenchmarkXMLParse(b *testing.B) {
-	buf := bytes.NewReader([]byte(plistValueTreeAsXML))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StartTimer()
-		d := newXMLPlistParser(buf)
-		d.parseDocument()
-		b.StopTimer()
-		buf.Seek(0, 0)
-	}
-}
-
-var InvalidXMLPlists = []string{
-	`<plist version="1.0"><integer>0x</integer></plist>`,
-	"<plist><doct><key>helo</key><string></string></doct></plist>",
-	"<plist><dict><string>helo</string></dict></plist>",
-	"<plist><dict><key>helo</key></dict></plist>",
-	"<plist><integer>helo</integer></plist>",
-	"<plist><integer></integer></plist>",
-	"<plist><real>helo</real></plist>",
-	"<plist><data>*@&amp;%#helo</data></plist>",
-	"<plist><date>*@&amp;%#helo</date></plist>",
-	"<plist><date>*@&amp;%#helo</date></plist>",
-	"<plist><integer>10</plist>",
-	"<plist><real>10</plist>",
-	"<plist><string>10</plist>",
-	"<plist><dict>10</plist>",
-	"<plist><dict><key>10</plist>",
-	"<plist>",
-	"<plist><data>",
-	"<plist><date>",
-	"<plist><array>",
-	"<plist/>",
-	"<pl",
-	"bplist00",
+var InvalidXMLPlists = []struct {
+	Name string
+	Data string
+}{
+	{"hex integer with no digits", `<plist version="1.0"><integer>0x</integer></plist>`},
+	{"unknown element doct", "<plist><doct><key>helo</key><string></string></doct></plist>"},
+	{"dict with string instead of key", "<plist><dict><string>helo</string></dict></plist>"},
+	{"dict with key but no value", "<plist><dict><key>helo</key></dict></plist>"},
+	{"integer with non-numeric value", "<plist><integer>helo</integer></plist>"},
+	{"empty integer", "<plist><integer></integer></plist>"},
+	{"real with non-numeric value", "<plist><real>helo</real></plist>"},
+	{"data with invalid base64", "<plist><data>*@&amp;%#helo</data></plist>"},
+	{"date with invalid format", "<plist><date>*@&amp;%#helo</date></plist>"},
+	{"unclosed integer tag", "<plist><integer>10</plist>"},
+	{"unclosed real tag", "<plist><real>10</plist>"},
+	{"unclosed string tag", "<plist><string>10</plist>"},
+	{"unclosed dict tag", "<plist><dict>10</plist>"},
+	{"unclosed key tag", "<plist><dict><key>10</plist>"},
+	{"truncated plist open tag", "<plist>"},
+	{"truncated data tag", "<plist><data>"},
+	{"truncated date tag", "<plist><date>"},
+	{"truncated array tag", "<plist><array>"},
+	{"self-closing empty plist", "<plist/>"},
+	{"truncated XML", "<pl"},
+	{"binary plist magic as XML", "bplist00"},
 }
 
 func TestVariousIllegalXMLPlists(t *testing.T) {
-	for _, plist := range InvalidXMLPlists {
-		buf := bytes.NewReader([]byte(plist))
-		d := newXMLPlistParser(buf)
-		obj, err := d.parseDocument()
-		t.Logf("Error: %v", err)
-		if obj != nil && err == nil {
-			t.Error("Expected error, received nothing.")
-		}
+	for i, tc := range InvalidXMLPlists {
+		t.Run(fmt.Sprintf("%d_%s", i, tc.Name), func(t *testing.T) {
+			buf := bytes.NewReader([]byte(tc.Data))
+			d := newXMLPlistParser(buf)
+			_, err := d.parseDocument()
+			if err == nil {
+				t.Errorf("expected error for invalid plist %q, got nil", tc.Data)
+			} else {
+				t.Logf("Error: %v", err)
+			}
+		})
 	}
 }

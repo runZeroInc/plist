@@ -20,8 +20,9 @@ func isEmptyValue(v reflect.Value) bool {
 		return v.Float() == 0
 	case reflect.Interface, reflect.Ptr:
 		return v.IsNil()
+	default:
+		return false
 	}
-	return false
 }
 
 // typeInfo holds details for the plist representation of a type.
@@ -49,11 +50,13 @@ type fieldInfo struct {
 	omitEmptyDepthMap uint64
 }
 
-var tinfoMap = make(map[reflect.Type]*typeInfo)
-var tinfoLock sync.RWMutex
+var (
+	tinfoMap  = make(map[reflect.Type]*typeInfo)
+	tinfoLock sync.RWMutex
+)
 
 // getTypeInfo returns the typeInfo structure with details necessary
-// for marshalling and unmarshalling typ.
+// for marshaling and unmarshaling typ.
 func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
 	tinfoLock.RLock()
 	tinfo, ok := tinfoMap[typ]

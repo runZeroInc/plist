@@ -5,9 +5,8 @@ type characterSet [4]uint64
 func (s *characterSet) Map(ch rune) rune {
 	if s.Contains(ch) {
 		return ch
-	} else {
-		return -1
 	}
+	return -1
 }
 
 func (s *characterSet) Contains(ch rune) bool {

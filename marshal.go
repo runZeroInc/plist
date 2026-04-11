@@ -12,7 +12,7 @@ var (
 	timeType           = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
-func implementsInterface(val reflect.Value, interfaceType reflect.Type) (interface{}, bool) {
+func implementsInterface(val reflect.Value, interfaceType reflect.Type) (any, bool) {
 	if val.CanInterface() {
 		itf := val.Interface()
 		if itf != nil && reflect.TypeOf(itf).Implements(interfaceType) {
@@ -69,8 +69,8 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 }
 
 func (p *Encoder) marshalTime(val reflect.Value) cfValue {
-	time := val.Interface().(time.Time)
-	return cfDate(time)
+	t, _ := val.Interface().(time.Time)
+	return cfDate(t)
 }
 
 func innermostValue(val reflect.Value) reflect.Value {
@@ -86,7 +86,8 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	}
 
 	if receiver, can := implementsInterface(val, plistMarshalerType); can {
-		return p.marshalPlistInterface(receiver.(Marshaler))
+		m, _ := receiver.(Marshaler)
+		return p.marshalPlistInterface(m)
 	}
 
 	// time.Time implements TextMarshaler, but we need to store it in RFC3339
@@ -102,7 +103,8 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 
 	// Check for text marshaler.
 	if receiver, can := implementsInterface(val, textMarshalerType); can {
-		return p.marshalTextInterface(receiver.(encoding.TextMarshaler))
+		tm, _ := receiver.(encoding.TextMarshaler)
+		return p.marshalTextInterface(tm)
 	}
 
 	// Descend into pointers or interfaces
@@ -138,24 +140,23 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 		return cfBoolean(val.Bool())
 	case reflect.Slice, reflect.Array:
 		if typ.Elem().Kind() == reflect.Uint8 {
-			bytes := []byte(nil)
+			var b []byte
 			if val.CanAddr() && val.Kind() == reflect.Slice {
-				// arrays are may be addressable but do not support .Bytes
-				bytes = val.Bytes()
+				// arrays may be addressable but do not support .Bytes
+				b = val.Bytes()
 			} else {
-				bytes = make([]byte, val.Len())
-				reflect.Copy(reflect.ValueOf(bytes), val)
+				b = make([]byte, val.Len())
+				reflect.Copy(reflect.ValueOf(b), val)
 			}
-			return cfData(bytes)
-		} else {
-			values := make([]cfValue, val.Len())
-			for i, length := 0, val.Len(); i < length; i++ {
-				if subpval := p.marshal(val.Index(i)); subpval != nil {
-					values[i] = subpval
-				}
-			}
-			return &cfArray{values}
+			return cfData(b)
 		}
+		values := make([]cfValue, val.Len())
+		for i, length := 0, val.Len(); i < length; i++ {
+			if subpval := p.marshal(val.Index(i)); subpval != nil {
+				values[i] = subpval
+			}
+		}
+		return &cfArray{values}
 	case reflect.Map:
 		if typ.Key().Kind() != reflect.String {
 			panic(&unknownTypeError{typ})

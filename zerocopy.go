@@ -1,20 +1,10 @@
-// +build !appengine
-
 package plist
 
-import (
-	"reflect"
-	"unsafe"
-)
+import "unsafe"
 
-func zeroCopy8BitString(buf []byte, off int, len int) string {
-	if len == 0 {
+func zeroCopy8BitString(buf []byte, off, n int) string {
+	if n == 0 {
 		return ""
 	}
-
-	var s string
-	hdr := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	hdr.Data = uintptr(unsafe.Pointer(&buf[off]))
-	hdr.Len = len
-	return s
+	return unsafe.String(&buf[off], n)
 }

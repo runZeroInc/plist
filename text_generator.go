@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,22 +33,24 @@ func (p *textPlistGenerator) plistQuotedString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	s := ""
+	var b strings.Builder
+	b.Grow(len(str))
 	quot := false
 	for _, r := range str {
-		if r > 0xFF {
+		switch {
+		case r > 0xFF:
 			quot = true
-			s += `\U`
+			b.WriteString(`\U`)
 			us := strconv.FormatInt(int64(r), 16)
-			s += padding[len(us):]
-			s += us
-		} else if r > 0x7F {
+			b.WriteString(padding[len(us):])
+			b.WriteString(us)
+		case r > 0x7F:
 			quot = true
-			s += `\`
+			b.WriteByte('\\')
 			us := strconv.FormatInt(int64(r), 8)
-			s += padding[1+len(us):]
-			s += us
-		} else {
+			b.WriteString(padding[1+len(us):])
+			b.WriteString(us)
+		default:
 			c := uint8(r)
 			if p.quotableTable.ContainsByte(c) {
 				quot = true
@@ -55,28 +58,28 @@ func (p *textPlistGenerator) plistQuotedString(str string) string {
 
 			switch c {
 			case '\a':
-				s += `\a`
+				b.WriteString(`\a`)
 			case '\b':
-				s += `\b`
+				b.WriteString(`\b`)
 			case '\v':
-				s += `\v`
+				b.WriteString(`\v`)
 			case '\f':
-				s += `\f`
+				b.WriteString(`\f`)
 			case '\\':
-				s += `\\`
+				b.WriteString(`\\`)
 			case '"':
-				s += `\"`
+				b.WriteString(`\"`)
 			case '\t', '\r', '\n':
 				fallthrough
 			default:
-				s += string(c)
+				b.WriteByte(c)
 			}
 		}
 	}
 	if quot {
-		s = `"` + s + `"`
+		return `"` + b.String() + `"`
 	}
-	return s
+	return b.String()
 }
 
 func (p *textPlistGenerator) deltaIndent(depthDelta int) {
@@ -170,7 +173,7 @@ func (p *textPlistGenerator) writePlistValue(pval cfValue) {
 	case cfData:
 		var hexencoded [9]byte
 		var l int
-		var asc = 9
+		asc := 9
 		hexencoded[8] = ' '
 
 		p.writer.Write([]byte(`<`))
@@ -186,7 +189,7 @@ func (p *textPlistGenerator) writePlistValue(pval cfValue) {
 			// Fill the buffer (only up to 8 characters, to preserve the space we implicitly include
 			// at the end of every encode)
 			hex.Encode(hexencoded[:8], b[i:l])
-			io.WriteString(p.writer, string(hexencoded[:asc]))
+			p.writer.Write(hexencoded[:asc])
 		}
 		p.writer.Write([]byte(`>`))
 	case cfDate:

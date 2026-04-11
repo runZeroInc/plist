@@ -1,4 +1,4 @@
-// +build dump
+//go:build dump
 
 // To dump a directory containing all the plist package test data, run
 // $ go test -tags dump
@@ -10,7 +10,6 @@ package plist
 import (
 	"encoding/gob"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +29,7 @@ func sanitizeFilename(f string) string {
 	return filenameReplacer.Replace(f)
 }
 
-func oneshotGob(v interface{}, path string) {
+func oneshotGob(v any, path string) {
 	f, _ := os.Create(path)
 	defer f.Close()
 	enc := gob.NewEncoder(f)
@@ -39,7 +38,7 @@ func oneshotGob(v interface{}, path string) {
 
 func makeDirs(dirs ...string) error {
 	for _, v := range dirs {
-		err := os.MkdirAll(v, 0777)
+		err := os.MkdirAll(v, 0o777)
 		if err != nil {
 			return err
 		}
@@ -93,7 +92,7 @@ func TestDump(t *testing.T) {
 		for k, v := range td.Documents {
 			extName := saneName + extensions[k]
 			path := filepath.Join(documentDir, extName)
-			_ = ioutil.WriteFile(path, v, 0666)
+			_ = os.WriteFile(path, v, 0o666)
 			if td.SkipEncode[k] {
 				touch(path + ".decode_only")
 			}
@@ -111,16 +110,16 @@ func TestDump(t *testing.T) {
 			ext = extensions[GNUStepFormat]
 		}
 
-		ioutil.WriteFile(filepath.Join(invalidDir, saneName+ext), []byte(td.Data), 0666)
+		os.WriteFile(filepath.Join(invalidDir, saneName+ext), []byte(td.Data), 0o666)
 	}
 
 	// Dump invalid XML plists (We don't have any right now.)
 	for i, v := range InvalidXMLPlists {
-		ioutil.WriteFile(filepath.Join(invalidDir, fmt.Sprintf("invalid-x-%2.02d", i)+extensions[XMLFormat]), []byte(v), 0666)
+		os.WriteFile(filepath.Join(invalidDir, fmt.Sprintf("invalid-x-%2.02d", i)+extensions[XMLFormat]), []byte(v), 0o666)
 	}
 
 	// Dump invalid binary plists
 	for i, v := range InvalidBplists {
-		ioutil.WriteFile(filepath.Join(invalidDir, fmt.Sprintf("invalid-b-%2.02d", i)+extensions[BinaryFormat]), v, 0666)
+		os.WriteFile(filepath.Join(invalidDir, fmt.Sprintf("invalid-b-%2.02d", i)+extensions[BinaryFormat]), v, 0o666)
 	}
 }

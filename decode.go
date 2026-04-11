@@ -23,13 +23,17 @@ type Decoder struct {
 // Decode works like Unmarshal, except it reads the decoder stream to find property list elements.
 //
 // After Decoding, the Decoder's Format field will be set to one of the plist format constants.
-func (p *Decoder) Decode(v interface{}) (err error) {
+func (p *Decoder) Decode(v any) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(runtime.Error); ok {
 				panic(r)
 			}
-			err = r.(error)
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				panic(r)
+			}
 		}
 	}()
 
@@ -74,7 +78,7 @@ func (p *Decoder) Decode(v interface{}) (err error) {
 	}
 
 	p.unmarshal(pval, reflect.ValueOf(v))
-	return
+	return err
 }
 
 // NewDecoder returns a Decoder that reads property list elements from a stream reader, r.
@@ -92,11 +96,11 @@ func NewDecoder(r io.ReadSeeker) *Decoder {
 // To decode property list values into an interface value, Unmarshal decodes the property list into the concrete value contained
 // in the interface value. If the interface value is nil, Unmarshal stores one of the following in the interface value:
 //
-//     string, bool, uint64, float64
-//     plist.UID for "CoreFoundation Keyed Archiver UIDs" (convertible to uint64)
-//     []byte, for plist data
-//     []interface{}, for plist arrays
-//     map[string]interface{}, for plist dictionaries
+//	string, bool, uint64, float64
+//	plist.UID for "CoreFoundation Keyed Archiver UIDs" (convertible to uint64)
+//	[]byte, for plist data
+//	[]any, for plist arrays
+//	map[string]any, for plist dictionaries
 //
 // If a property list value is not appropriate for a given value type, Unmarshal aborts immediately and returns an error.
 //
@@ -110,10 +114,10 @@ func NewDecoder(r io.ReadSeeker) *Decoder {
 // receives as a time.)
 //
 // Unmarshal returns the detected property list format and an error, if any.
-func Unmarshal(data []byte, v interface{}) (format int, err error) {
+func Unmarshal(data []byte, v any) (format int, err error) {
 	r := bytes.NewReader(data)
 	dec := NewDecoder(r)
 	err = dec.Decode(v)
 	format = dec.Format
-	return
+	return format, err
 }

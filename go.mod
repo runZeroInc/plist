@@ -1,9 +1,3 @@
-module howett.net/plist
+module github.com/moond4rk/plist
 
-go 1.12
-
-require (
-	// for cmd/ply
-	github.com/jessevdk/go-flags v1.4.0
-	gopkg.in/yaml.v3 v3.0.1
-)
+go 1.20

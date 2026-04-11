@@ -1,0 +1,174 @@
+# golangci-lint v2 configuration
+# Compatible with Go 1.20
+version: "2"
+
+run:
+  go: "1.20"
+  timeout: "5m"
+  allow-parallel-runners: true
+
+linters:
+  default: none
+  enable:
+    # Default tier — must-have for any Go project
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+    # Bug detection
+    - errorlint
+    - gosec
+    - nilerr
+    - durationcheck
+    - errchkjson
+    - exhaustive
+    - forcetypeassert
+
+    # Code quality
+    - depguard
+    - dogsled
+    - dupl
+    - dupword
+    - errname
+    - funlen
+    - gocheckcompilerdirectives
+    - goconst
+    - gocritic
+    - godox
+    - goprintffuncname
+    - lll
+    - mirror
+    - misspell
+    - nakedret
+    # predeclared — disabled because upstream code shadows builtins (len, cap, new, max)
+    # - predeclared
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+
+    # Complexity
+    - gocognit
+    - nestif
+
+    # Note: copyloopvar, intrange, modernize, perfsprint require Go 1.22+
+    # They will be enabled when Go version constraint is lifted.
+
+  settings:
+    depguard:
+      rules:
+        blocked:
+          deny:
+            - pkg: "github.com/pkg/errors"
+              desc: Use fmt.Errorf with %w or errors stdlib instead.
+            - pkg: "io/ioutil"
+              desc: Deprecated since Go 1.16. Use io and os packages instead.
+    exhaustive:
+      default-signifies-exhaustive: true
+    dupl:
+      threshold: 100
+    funlen:
+      lines: -1
+      statements: 105
+    goconst:
+      min-len: 2
+      min-occurrences: 4
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - dupImport
+        - hugeParam
+        - unnamedResult
+        - whyNoLint
+        - singleCaseSwitch
+        - emptyFallthrough   # intentional fallthrough in text_generator
+        - emptyStringTest    # len(s)==0 vs s=="" is stylistic, not a bug
+    lll:
+      line-length: 140
+    gocognit:
+      min-complexity: 75
+    nestif:
+      min-complexity: 15
+    godox:
+      keywords:
+        - FIXME
+    govet:
+      enable:
+        - nilness
+    errorlint:
+      asserts: false
+    errcheck:
+      check-type-assertions: false
+    gosec:
+      excludes:
+        - G103 # unsafe usage — intentional for zero-copy string parsing in binary plist
+        - G115 # integer overflow on conversion — false positives on safe narrowing
+        - G601 # implicit memory aliasing in for loop — fixed in Go 1.22, acceptable in Go 1.20
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: indent-error-flow
+        - name: unexported-return
+        - name: unused-parameter
+          disabled: true
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA4016" # bitwise OR with zero — intentional for format tag clarity
+        - "-SA9004" # first const in group has explicit type — intentional for iota-like patterns
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      - path: typeinfo\.go
+        linters:
+          - unparam  # typ parameter kept for API consistency with reflect patterns
+      - path: _test\.go
+        linters:
+          - dupl
+          - funlen
+          - gosec
+          - errcheck
+          - lll
+          - forcetypeassert
+          - gocognit
+          - gocritic
+      # Internal writer operations use panic/recover pattern — errors are caught at the boundary
+      - source: "p\\.writer\\.Write|io\\.WriteString|p\\.WriteByte|p\\.WriteString|binary\\.Write"
+        linters:
+          - errcheck
+      # Panic/recover control flow in encode/decode boundaries
+      - source: "r\\.\\(error\\)"
+        linters:
+          - errcheck
+      - source: "p\\.reader\\.(Read|Seek)"
+        linters:
+          - errcheck
+      - source: "p\\.xmlDecoder\\.(Skip|DecodeElement)"
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/moond4rk/plist

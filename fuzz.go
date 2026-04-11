@@ -1,4 +1,4 @@
-// +build gofuzz
+//go:build gofuzz
 
 package plist
 
@@ -9,7 +9,7 @@ import (
 func Fuzz(data []byte) int {
 	buf := bytes.NewReader(data)
 
-	var obj interface{}
+	var obj any
 	if err := NewDecoder(buf).Decode(&obj); err != nil {
 		return 0
 	}

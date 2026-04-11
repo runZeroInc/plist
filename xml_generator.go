@@ -70,7 +70,7 @@ func (p *xmlPlistGenerator) closeTag(n string) {
 	p.WriteByte('>')
 }
 
-func (p *xmlPlistGenerator) element(n string, v string) {
+func (p *xmlPlistGenerator) element(n, v string) {
 	p.writeIndent(0)
 	if len(v) == 0 {
 		p.WriteByte('<')

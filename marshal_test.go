@@ -6,53 +6,10 @@ import (
 	"time"
 )
 
-func BenchmarkStructMarshal(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		e := &Encoder{}
-		e.marshal(reflect.ValueOf(plistValueTreeRawData))
-	}
-}
-
-func BenchmarkMapMarshal(b *testing.B) {
-	data := map[string]interface{}{
-		"intarray": []interface{}{
-			int(1),
-			int8(8),
-			int16(16),
-			int32(32),
-			int64(64),
-			uint(2),
-			uint8(9),
-			uint16(17),
-			uint32(33),
-			uint64(65),
-		},
-		"floats": []interface{}{
-			float32(32.0),
-			float64(64.0),
-		},
-		"booleans": []bool{
-			true,
-			false,
-		},
-		"strings": []string{
-			"Hello, ASCII",
-			"Hello, 世界",
-		},
-		"data": []byte{1, 2, 3, 4},
-		"date": time.Date(2013, 11, 27, 0, 34, 0, 0, time.UTC),
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		e := &Encoder{}
-		e.marshal(reflect.ValueOf(data))
-	}
-}
-
 func TestInvalidMarshal(t *testing.T) {
 	tests := []struct {
 		Name  string
-		Thing interface{}
+		Thing any
 	}{
 		{"Function", func() {}},
 		{"Nil", nil},
@@ -61,7 +18,7 @@ func TestInvalidMarshal(t *testing.T) {
 	}
 
 	for _, v := range tests {
-		subtest(t, v.Name, func(t *testing.T) {
+		t.Run(v.Name, func(t *testing.T) {
 			data, err := Marshal(v.Thing, OpenStepFormat)
 			if err == nil {
 				t.Fatalf("expected error; got plist data: %x", data)
@@ -74,7 +31,7 @@ func TestInvalidMarshal(t *testing.T) {
 
 type Cat struct{}
 
-func (c *Cat) MarshalPlist() (interface{}, error) {
+func (c *Cat) MarshalPlist() (any, error) {
 	return "cat", nil
 }
 
@@ -90,7 +47,7 @@ func TestInterfaceMarshal(t *testing.T) {
 
 func TestInterfaceFieldMarshal(t *testing.T) {
 	type X struct {
-		C interface{} // C's type does not implement Marshaler
+		C any // C's type does not implement Marshaler
 	}
 	x := &X{
 		C: &Cat{}, // C's value implements Marshaler
@@ -106,10 +63,10 @@ func TestInterfaceFieldMarshal(t *testing.T) {
 
 func TestMarshalInterfaceFieldPtrTime(t *testing.T) {
 	type X struct {
-		C interface{} // C's type is unknown
+		C any // C's type is unknown
 	}
 
-	var sentinelTime = time.Date(2013, 11, 27, 0, 34, 0, 0, time.UTC)
+	sentinelTime := time.Date(2013, 11, 27, 0, 34, 0, 0, time.UTC)
 	x := &X{
 		C: &sentinelTime,
 	}
@@ -131,7 +88,7 @@ type Dog struct {
 	Name string
 }
 
-type Animal interface{}
+type Animal any
 
 func TestInterfaceSliceMarshal(t *testing.T) {
 	x := make([]Animal, 0)
@@ -146,7 +103,7 @@ func TestInterfaceSliceMarshal(t *testing.T) {
 }
 
 func TestInterfaceGeneralSliceMarshal(t *testing.T) {
-	x := make([]interface{}, 0) // accept any type
+	x := make([]any, 0) // accept any type
 	x = append(x, &Dog{Name: "dog"}, "a string", 1, true)
 
 	b, err := Marshal(x, XMLFormat)
