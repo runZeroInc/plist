@@ -16,6 +16,7 @@ type xmlPlistParser struct {
 	xmlDecoder         *xml.Decoder
 	whitespaceReplacer *strings.Replacer
 	ntags              int
+	depth              int // runzero patch: current container-nesting depth
 }
 
 func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
@@ -24,14 +25,11 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 			if _, ok := r.(runtime.Error); ok {
 				panic(r)
 			}
-			switch e := r.(type) {
-			case invalidPlistError:
-				parseError = e
-			case error:
+			if _, ok := r.(invalidPlistError); ok {
+				parseError = r.(error)
+			} else {
 				// Wrap all non-invalid-plist errors.
-				parseError = plistParseError{"XML", e}
-			default:
-				panic(r)
+				parseError = plistParseError{"XML", r.(error)}
 			}
 		}
 	}()
@@ -42,7 +40,7 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 				if p.ntags == 0 {
 					panic(invalidPlistError{"XML", errors.New("no elements encountered")})
 				}
-				return pval, parseError
+				return
 			}
 		} else {
 			// The first XML parse turned out to be invalid:
@@ -53,6 +51,17 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 }
 
 func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
+	// runzero patch: bound recursion depth so a deeply nested plist
+	// cannot overflow the goroutine stack (an unrecoverable fatal error).
+	p.depth++
+	if p.depth > maxParseDepth {
+		// NB: a plain error (not invalidPlistError) so decode.go treats this as
+		// a hard XML parse failure and does NOT retry with the text parser,
+		// which would otherwise re-walk the same hostile depth.
+		panic(errMaxDepthExceeded)
+	}
+	defer func() { p.depth-- }()
+
 	var charData xml.CharData
 	switch element.Name.Local {
 	case "plist":
@@ -71,7 +80,7 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 				return p.parseXMLElement(el)
 			}
 		}
-		panic(invalidPlistError{"XML", errors.New("empty plist")})
+		return nil
 	case "string":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
@@ -96,10 +105,11 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			s, base := unsignedGetBase(s[1:])
 			n := mustParseInt("-"+s, base, 64)
 			return &cfNumber{signed: true, value: uint64(n)}
+		} else {
+			s, base := unsignedGetBase(s)
+			n := mustParseUint(s, base, 64)
+			return &cfNumber{signed: false, value: n}
 		}
-		s, base := unsignedGetBase(s)
-		n := mustParseUint(s, base, 64)
-		return &cfNumber{signed: false, value: n}
 	case "real":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
@@ -209,5 +219,5 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 }
 
 func newXMLPlistParser(r io.Reader) *xmlPlistParser {
-	return &xmlPlistParser{r, xml.NewDecoder(r), strings.NewReplacer("\t", "", "\n", "", " ", "", "\r", ""), 0}
+	return &xmlPlistParser{r, xml.NewDecoder(r), strings.NewReplacer("\t", "", "\n", "", " ", "", "\r", ""), 0, 0}
 }
