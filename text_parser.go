@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"runtime"
 	"strings"
 	"time"
@@ -74,12 +73,16 @@ func (p *textPlistParser) parseDocument() (pval cfValue, parseError error) {
 			if _, ok := r.(runtime.Error); ok {
 				panic(r)
 			}
+			err, ok := r.(error)
+			if !ok {
+				panic(r)
+			}
 			// Wrap all non-invalid-plist errors.
-			parseError = plistParseError{"text", r.(error)}
+			parseError = plistParseError{"text", err}
 		}
 	}()
 
-	buffer, err := ioutil.ReadAll(p.reader)
+	buffer, err := io.ReadAll(p.reader)
 	if err != nil {
 		panic(err)
 	}
@@ -105,8 +108,7 @@ func (p *textPlistParser) parseDocument() (pval cfValue, parseError error) {
 	}
 
 	pval = val
-
-	return
+	return pval, parseError
 }
 
 const eof rune = -1
@@ -118,7 +120,7 @@ func (p *textPlistParser) error(e string, args ...interface{}) {
 }
 
 func (p *textPlistParser) next() rune {
-	if int(p.pos) >= len(p.input) {
+	if p.pos >= len(p.input) {
 		p.width = 0
 		return eof
 	}
@@ -186,28 +188,29 @@ func (p *textPlistParser) scanCharactersNotInSet(ch *characterSet) {
 }
 
 func (p *textPlistParser) skipWhitespaceAndComments() {
+loop:
 	for {
 		p.scanCharactersInSet(&whitespace)
-		if strings.HasPrefix(p.input[p.pos:], "//") {
+		switch {
+		case strings.HasPrefix(p.input[p.pos:], "//"):
 			p.scanCharactersNotInSet(&newlineCharacterSet)
-		} else if strings.HasPrefix(p.input[p.pos:], "/*") {
+		case strings.HasPrefix(p.input[p.pos:], "/*"):
 			if x := strings.Index(p.input[p.pos:], "*/"); x >= 0 {
 				p.pos += x + 2 // skip the */ as well
 				continue       // consume more whitespace
-			} else {
-				p.error("unexpected eof in block comment")
 			}
-		} else {
-			break
+			p.error("unexpected eof in block comment")
+		default:
+			break loop
 		}
 	}
 	p.ignore()
 }
 
-func (p *textPlistParser) parseOctalDigits(max int) uint64 {
+func (p *textPlistParser) parseOctalDigits(maxDigits int) uint64 {
 	var val uint64
 
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxDigits; i++ {
 		r := p.next()
 
 		if r >= '0' && r <= '7' {
@@ -221,24 +224,25 @@ func (p *textPlistParser) parseOctalDigits(max int) uint64 {
 	return val
 }
 
-func (p *textPlistParser) parseHexDigits(max int) uint64 {
+func (p *textPlistParser) parseHexDigits(maxDigits int) uint64 {
 	var val uint64
 
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxDigits; i++ {
 		r := p.next()
 
-		if r >= 'a' && r <= 'f' {
+		switch {
+		case r >= 'a' && r <= 'f':
 			val <<= 4
 			val |= 10 + uint64((r - 'a'))
-		} else if r >= 'A' && r <= 'F' {
+		case r >= 'A' && r <= 'F':
 			val <<= 4
 			val |= 10 + uint64((r - 'A'))
-		} else if r >= '0' && r <= '9' {
+		case r >= '0' && r <= '9':
 			val <<= 4
 			val |= uint64((r - '0'))
-		} else {
+		default:
 			p.backup()
-			break
+			return val
 		}
 	}
 	return val
@@ -297,10 +301,10 @@ func (p *textPlistParser) parseQuotedString() cfString {
 			p.pos++ // skip "
 			if !slowPath {
 				return cfString(section)
-			} else {
-				s += section
-				return cfString(s)
 			}
+
+			s += section
+			return cfString(s)
 		case '\\':
 			slowPath = true
 			s += p.emit()
@@ -321,8 +325,7 @@ func (p *textPlistParser) parseUnquotedString() cfString {
 }
 
 // the { has already been consumed
-func (p *textPlistParser) parseDictionary(ignoreEof bool) cfValue {
-	//p.ignore() // ignore the {
+func (p *textPlistParser) parseDictionary(ignoreEOF bool) cfValue {
 	var keypv cfValue
 	keys := make([]string, 0, 32)
 	values := make([]cfValue, 0, 32)
@@ -332,7 +335,7 @@ outer:
 
 		switch p.next() {
 		case eof:
-			if !ignoreEof {
+			if !ignoreEOF {
 				p.error("unexpected eof in dictionary")
 			}
 			fallthrough
@@ -351,13 +354,13 @@ outer:
 		p.skipWhitespaceAndComments()
 
 		var val cfValue
-		n := p.next()
-		if n == ';' {
+		switch p.next() {
+		case ';':
 			// This is supposed to be .strings-specific.
 			// GNUstep parses this as an empty string.
 			// Apple copies the key like we do.
 			val = keypv
-		} else if n == '=' {
+		case '=':
 			// whitespace is consumed within
 			val = p.parsePlistValue()
 
@@ -366,11 +369,16 @@ outer:
 			if p.next() != ';' {
 				p.error("missing ; in dictionary")
 			}
-		} else {
+		default:
 			p.error("missing = in dictionary")
 		}
 
-		keys = append(keys, string(keypv.(cfString)))
+		key, ok := keypv.(cfString)
+		if !ok {
+			p.error("dictionary key is not a string")
+		}
+
+		keys = append(keys, string(key))
 		values = append(values, val)
 	}
 
@@ -380,7 +388,6 @@ outer:
 
 // the ( has already been consumed
 func (p *textPlistParser) parseArray() *cfArray {
-	//p.ignore() // ignore the (
 	values := make([]cfValue, 0, 32)
 outer:
 	for {
@@ -453,10 +460,10 @@ func (p *textPlistParser) parseGNUStepValue() cfValue {
 		if v[0] == '-' {
 			n := mustParseInt(v, 10, 64)
 			return &cfNumber{signed: true, value: uint64(n)}
-		} else {
-			n := mustParseUint(v, 10, 64)
-			return &cfNumber{signed: false, value: n}
 		}
+
+		n := mustParseUint(v, 10, 64)
+		return &cfNumber{signed: false, value: n}
 	case 'R':
 		n := mustParseFloat(v, 64)
 		return &cfReal{wide: true, value: n} // TODO(DH) 32/64
@@ -525,13 +532,14 @@ func (p *textPlistParser) parseHexData() cfData {
 		}
 
 		buf[i] <<= 4
-		if r >= 'a' && r <= 'f' {
+		switch {
+		case r >= 'a' && r <= 'f':
 			buf[i] |= 10 + byte((r - 'a'))
-		} else if r >= 'A' && r <= 'F' {
+		case r >= 'A' && r <= 'F':
 			buf[i] |= 10 + byte((r - 'A'))
-		} else if r >= '0' && r <= '9' {
+		case r >= '0' && r <= '9':
 			buf[i] |= byte((r - '0'))
-		} else {
+		default:
 			p.error("unexpected hex digit `%c'", r)
 		}
 

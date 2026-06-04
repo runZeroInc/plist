@@ -25,11 +25,17 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 			if _, ok := r.(runtime.Error); ok {
 				panic(r)
 			}
-			if _, ok := r.(invalidPlistError); ok {
-				parseError = r.(error)
+
+			err, ok := r.(error)
+			if !ok {
+				panic(r)
+			}
+
+			if _, ok = r.(invalidPlistError); ok {
+				parseError = err
 			} else {
 				// Wrap all non-invalid-plist errors.
-				parseError = plistParseError{"XML", r.(error)}
+				parseError = plistParseError{"XML", err}
 			}
 		}
 	}()
@@ -40,7 +46,7 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 				if p.ntags == 0 {
 					panic(invalidPlistError{"XML", errors.New("no elements encountered")})
 				}
-				return
+				return pval, parseError
 			}
 		} else {
 			// The first XML parse turned out to be invalid:
@@ -50,6 +56,7 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 	}
 }
 
+//nolint:funlen // XML plist grammar is a centralized switch for readability.
 func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 	// runzero patch: bound recursion depth so a deeply nested plist
 	// cannot overflow the goroutine stack (an unrecoverable fatal error).
@@ -80,7 +87,7 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 				return p.parseXMLElement(el)
 			}
 		}
-		return nil
+		panic(errors.New("invalid empty <plist/>"))
 	case "string":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
@@ -105,11 +112,11 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			s, base := unsignedGetBase(s[1:])
 			n := mustParseInt("-"+s, base, 64)
 			return &cfNumber{signed: true, value: uint64(n)}
-		} else {
-			s, base := unsignedGetBase(s)
-			n := mustParseUint(s, base, 64)
-			return &cfNumber{signed: false, value: n}
 		}
+
+		s, base := unsignedGetBase(s)
+		n := mustParseUint(s, base, 64)
+		return &cfNumber{signed: false, value: n}
 	case "real":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"runtime"
 	"time"
@@ -69,11 +68,16 @@ func (p *bplistParser) parseDocument() (pval cfValue, parseError error) {
 				panic(r)
 			}
 
-			parseError = plistParseError{"binary", r.(error)}
+			err, ok := r.(error)
+			if !ok {
+				panic(r)
+			}
+
+			parseError = plistParseError{"binary", err}
 		}
 	}()
 
-	p.buffer, _ = ioutil.ReadAll(p.reader)
+	p.buffer, _ = io.ReadAll(p.reader)
 
 	l := len(p.buffer)
 	if l < 40 {
@@ -112,11 +116,11 @@ func (p *bplistParser) parseDocument() (pval cfValue, parseError error) {
 	p.objects = make([]cfValue, p.trailer.NumObjects)
 
 	pval = p.objectAtIndex(p.trailer.TopObject)
-	return
+	return pval, parseError
 }
 
 // parseSizedInteger returns a 128-bit integer as low64, high64
-func (p *bplistParser) parseSizedInteger(off offset, nbytes int) (lo uint64, hi uint64, newOffset offset) {
+func (p *bplistParser) parseSizedInteger(off offset, nbytes int) (lo, hi uint64, newOffset offset) {
 	// Per comments in CoreFoundation, format version 00 requires that all
 	// 1, 2 or 4-byte integers be interpreted as unsigned. 8-byte integers are
 	// signed (always?) and therefore must be sign extended here.
@@ -155,7 +159,7 @@ func (p *bplistParser) parseSizedInteger(off offset, nbytes int) (lo uint64, hi 
 		lo, hi = binary.BigEndian.Uint64(p.buffer[off-(8-offset(nbytes)):])&((1<<offset(nbytes*8))-1), 0
 	}
 	newOffset = off + offset(nbytes)
-	return
+	return lo, hi, newOffset
 }
 
 func (p *bplistParser) parseObjectRefAtOffset(off offset) (uint64, offset) {
@@ -185,7 +189,6 @@ func (p *bplistParser) objectAtIndex(index uint64) cfValue {
 	pval := p.parseTagAtOffset(off)
 	p.objects[index] = pval
 	return pval
-
 }
 
 // checkBufferRange panics with a (recoverable, non-runtime) parse error if the
@@ -274,8 +277,8 @@ func (p *bplistParser) parseTagAtOffset(off offset) cfValue {
 		val += 978307200
 
 		sec, fsec := math.Modf(val)
-		time := time.Unix(int64(sec), int64(fsec*float64(time.Second))).In(time.UTC)
-		return cfDate(time)
+		tm := time.Unix(int64(sec), int64(fsec*float64(time.Second))).In(time.UTC)
+		return cfDate(tm)
 	case bpTagData:
 		data := p.parseDataAtOffset(off)
 		return cfData(data)
@@ -312,31 +315,31 @@ func (p *bplistParser) countForTagAtOffset(off offset) (uint64, offset) {
 }
 
 func (p *bplistParser) parseDataAtOffset(off offset) []byte {
-	len, start := p.countForTagAtOffset(off)
-	if start+offset(len) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("data@0x%x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
+	count, start := p.countForTagAtOffset(off)
+	if start+offset(count) > offset(p.trailer.OffsetTableOffset) {
+		panic(fmt.Errorf("data@0x%x too long (%v bytes, max is %v)", off, count, p.trailer.OffsetTableOffset-uint64(start)))
 	}
-	return p.buffer[start : start+offset(len)]
+	return p.buffer[start : start+offset(count)]
 }
 
 func (p *bplistParser) parseASCIIStringAtOffset(off offset) string {
-	len, start := p.countForTagAtOffset(off)
-	if start+offset(len) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("ascii string@0x%x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
+	count, start := p.countForTagAtOffset(off)
+	if start+offset(count) > offset(p.trailer.OffsetTableOffset) {
+		panic(fmt.Errorf("ascii string@0x%x too long (%v bytes, max is %v)", off, count, p.trailer.OffsetTableOffset-uint64(start)))
 	}
 
-	return zeroCopy8BitString(p.buffer, int(start), int(len))
+	return zeroCopy8BitString(p.buffer, int(start), int(count))
 }
 
 func (p *bplistParser) parseUTF16StringAtOffset(off offset) string {
-	len, start := p.countForTagAtOffset(off)
-	bytes := len * 2
-	if start+offset(bytes) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("utf16 string@0x%x too long (%v bytes, max is %v)", off, bytes, p.trailer.OffsetTableOffset-uint64(start)))
+	count, start := p.countForTagAtOffset(off)
+	byteLen := count * 2
+	if start+offset(byteLen) > offset(p.trailer.OffsetTableOffset) {
+		panic(fmt.Errorf("utf16 string@0x%x too long (%v bytes, max is %v)", off, byteLen, p.trailer.OffsetTableOffset-uint64(start)))
 	}
 
-	u16s := make([]uint16, len)
-	for i := offset(0); i < offset(len); i++ {
+	u16s := make([]uint16, count)
+	for i := offset(0); i < offset(count); i++ {
 		u16s[i] = binary.BigEndian.Uint16(p.buffer[start+(i*2):])
 	}
 	runes := utf16.Decode(u16s)
@@ -363,7 +366,7 @@ func (p *bplistParser) parseDictionaryAtOffset(off offset) *cfDictionary {
 	p.pushNestedObject(off)
 	defer p.popNestedObject()
 
-	// a dictionary is an object list of [key key key val val val]
+	// A dictionary is an object list of [keys... values...].
 	cnt, start := p.countForTagAtOffset(off)
 	objects := p.parseObjectListAtOffset(start, cnt*2)
 
