@@ -29,7 +29,7 @@ func TestXMLPlistDepthLimit(t *testing.T) {
 	}
 	b.WriteString("</plist>")
 
-	var out interface{}
+	var out any
 	_, err := Unmarshal([]byte(b.String()), &out)
 	if err == nil {
 		t.Fatal("expected a parse error for deeply nested XML plist, got nil")
@@ -51,7 +51,7 @@ func TestTextPlistDepthLimit(t *testing.T) {
 		b.WriteString(";}")
 	}
 
-	var out interface{}
+	var out any
 	_, err := Unmarshal([]byte(b.String()), &out)
 	if err == nil {
 		t.Fatal("expected a parse error for deeply nested text plist, got nil")
@@ -114,7 +114,7 @@ func TestBplistDepthLimit(t *testing.T) {
 	depth := maxParseDepth + 10
 	data := buildDeepBplist(depth)
 
-	var out interface{}
+	var out any
 	_, err := Unmarshal(data, &out)
 	if err == nil {
 		t.Fatal("expected a parse error for deeply nested binary plist, got nil")
@@ -131,7 +131,7 @@ func TestBplistShallowStillParses(t *testing.T) {
 	// A small valid bplist (single array of one string) must still decode after
 	// the hardening, guarding against an over-aggressive bounds/depth check.
 	data := buildDeepBplist(2)
-	var out interface{}
+	var out any
 	if _, err := Unmarshal(data, &out); err != nil {
 		t.Fatalf("valid shallow bplist failed to decode: %v", err)
 	}
